@@ -1,4 +1,4 @@
-package main
+//package main
 
 import (
 	"flag"
@@ -8,6 +8,7 @@ import (
 )
 
 type MyMap map[string]string
+type ModString func(sandglass [][]string)
 
 const (
 	RED                = "\x1B[31m"
@@ -39,6 +40,10 @@ func print(char string, size int, color string) {
 		}
 		fmt.Println()
 	}
+}
+
+func sandglass() {
+
 }
 
 func sandglass1(myMap MyMap) {
