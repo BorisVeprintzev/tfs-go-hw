@@ -2,7 +2,7 @@ package main
 
 import "fmt"
 
-type Mod func(sandglass [][]string)
+type Mod func(sandglass [][]string) [][]string
 
 const (
 	SIZE = 15
@@ -37,7 +37,7 @@ func myPrint(array [][]string) {
 }
 
 func changeChar(newChar string) Mod {
-	return func(sandglass [][]string) {
+	return func(sandglass [][]string) [][]string {
 		for i := range sandglass {
 			for j := range sandglass[i] {
 				if i == 0 || i == len(sandglass[i])-1 || i == j || i == len(sandglass[i])-j-1 {
@@ -45,11 +45,12 @@ func changeChar(newChar string) Mod {
 				}
 			}
 		}
+		return sandglass
 	}
 }
 
 func changeColor(newColor string) Mod {
-	return func(sandglass [][]string) {
+	return func(sandglass [][]string) [][]string {
 		for i := range sandglass {
 			for j := range sandglass[i] {
 				if i == 0 || i == len(sandglass[i])-1 || i == j || i == len(sandglass[i])-j-1 {
@@ -57,36 +58,38 @@ func changeColor(newColor string) Mod {
 				}
 			}
 		}
+		return sandglass
 	}
 }
 
 func changeSize(newSize int) Mod {
-	return func(sandglass [][]string) {
+	return func(sandglass [][]string) [][]string {
 		currentChar := sandglass[0][0]
-		sandglass = make([][]string, newSize)
-		for i := range sandglass {
-			sandglass[i] = make([]string, newSize)
+		newSandglass := make([][]string, newSize)
+		for i := range newSandglass {
+			newSandglass[i] = make([]string, newSize)
 		}
-		for i := range sandglass {
-			for j := range sandglass[i] {
-				if i == 0 || i == len(sandglass)-1 || i == j || i == len(sandglass)-j-1 {
-					sandglass[i][j] = currentChar
+		for i := range newSandglass {
+			for j := range newSandglass[i] {
+				if i == 0 || i == len(newSandglass)-1 || i == j || i == len(newSandglass)-j-1 {
+					newSandglass[i][j] = currentChar
 				} else {
-					sandglass[i][j] = " "
+					newSandglass[i][j] = " "
 				}
 			}
 		}
+		return newSandglass
 	}
 }
 
 func sandglass(mods ...Mod) {
 	sandglass := createDefault()
 	for _, mod := range mods {
-		mod(sandglass)
+		sandglass = mod(sandglass)
 	}
 	myPrint(sandglass)
 }
 
 func main() {
-	sandglass(changeSize(6), changeChar("!"), changeColor(RED))
+	sandglass(changeSize(10), changeChar("!"), changeColor(RED))
 }
