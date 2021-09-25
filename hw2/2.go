@@ -18,8 +18,12 @@ const (
 	EnvName = "ENV FILE"
 )
 
-type CompanyList struct {
+type CompanyListIn struct {
 	Companies []InInfoCompany
+}
+
+type CompanyListOut struct {
+	Companies []OutInfoCompany
 }
 type InInfoCompany struct {
 	Company   string      `json:"company"`
@@ -27,7 +31,7 @@ type InInfoCompany struct {
 	Value     int         `json:"value"`
 	Id        interface{} `json:"id"`
 	CreatedAt time.Time   `json:"created_at"`
-	Valid     bool        `default:"true"`
+	Valid     bool
 }
 
 type OutInfoCompany struct {
@@ -141,35 +145,35 @@ func UnmarshalDate(key interface{}) (time.Time, bool) {
 	return t, bTime
 }
 
-// func (i *InInfoCompany) UnmarshalOperation(objMap map[string]interface{}) error {
-// 	for key, value := range objMap {
-// 		switch key {
-// 		case "company":
-// 			i.Company, bCompany = UnmarshalCompany(value)
-// 		case "type":
-// 			i.Type, bType = UnmarshalType(value)
-// 		case "value":
-// 			i.Value, bValue = UnmarshalValue(value)
-// 		case "id":
-// 			i.Id, bId = UnmarshalId(value)
-// 			switch i.Id.(type) {
-// 			case int:
-// 				i.Id = i.Id.(int)
-// 			case string:
-// 				i.Id = i.Id.(string)
-// 			}
-// 		case "created_at":
-// 			i.CreatedAt, bTime = UnmarshalDate(value)
-// 		}
-// 	}
-// }
+func (i *InInfoCompany) UnmarshalOperation(objMap map[string]interface{}) (bool, bool, bool, bool, bool) {
+	var obType, obValue, obId, obTime, obCompany bool
+
+	for key, value := range objMap {
+		switch key {
+		case "company":
+			i.Company, obCompany = UnmarshalCompany(value)
+		case "type":
+			i.Type, obType = UnmarshalType(value)
+		case "value":
+			i.Value, obValue = UnmarshalValue(value)
+		case "id":
+			i.Id, obId = UnmarshalId(value)
+			switch i.Id.(type) {
+			case int:
+				i.Id = i.Id.(int)
+			case string:
+				i.Id = i.Id.(string)
+			}
+		case "created_at":
+			i.CreatedAt, obTime = UnmarshalDate(value)
+		}
+	}
+	return obType, obValue, obId, obTime, obCompany
+}
 
 func (i *InInfoCompany) MyUnmarshalObj(objMap map[string]interface{}) error {
-	var bType bool
-	var bValue bool
-	var bId bool
-	var bTime bool
-	var bCompany bool
+	var bType, bValue, bId, bTime, bCompany bool
+	var obType, obValue, obId, obTime, obCompany bool
 
 	for key, value := range objMap {
 		switch key {
@@ -190,16 +194,19 @@ func (i *InInfoCompany) MyUnmarshalObj(objMap map[string]interface{}) error {
 		case "created_at":
 			i.CreatedAt, bTime = UnmarshalDate(value)
 		case "operation":
-
+			tmp, ok := value.(map[string]interface{})
+			if ok {
+				obType, obValue, obId, obTime, obCompany = i.UnmarshalOperation(tmp)
+			}
 		}
 	}
-	if bCompany && bType && bValue && bTime && bId {
+	if (bCompany || obCompany) && (bType || obType) && (bValue || obValue) && (bTime || obTime) && (bId || obId) {
 		i.Valid = true
 	}
 	return nil
 }
 
-func (i *CompanyList) UnmarshalJSON(data []byte) error {
+func (i *CompanyListIn) UnmarshalJSON(data []byte) error {
 	var objMapSlice []map[string]interface{}
 
 	if err := json.Unmarshal(data, &objMapSlice); err != nil {
@@ -211,27 +218,34 @@ func (i *CompanyList) UnmarshalJSON(data []byte) error {
 		_ = companyInfo.MyUnmarshalObj(objMap)
 		i.Companies = append(i.Companies, companyInfo)
 	}
-	// for _, value := range i.Companies {
-	// 	fmt.Printf("%+v\n", value)
-	// }
-	fmt.Println("Я тут")
 
 	return nil
 }
 
 func main() {
 	filename := readFileName()
-	file, err := os.Open(filename)
-	if err != nil {
-		log.Fatal("Can't to open file:", filename, err)
-	}
-	defer file.Close()
-
-	data, err := io.ReadAll(file)
+	fileIn, err := os.Open(filename)
 	if err != nil {
 		log.Fatal(err)
 	}
-	var test CompanyList
-	_ = test.UnmarshalJSON(data)
+	defer fileIn.Close()
+
+	data, err := io.ReadAll(fileIn)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var companyListIn CompanyListIn
+	_ = companyListIn.UnmarshalJSON(data)
+
+	for _, value := range companyListIn.Companies {
+		fmt.Printf("%+v\n", value)
+	}
+
+	fileOut, err := os.Create("out.json")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer fileOut.Close()
+	// var companyListOut CompanyListOut
 
 }
