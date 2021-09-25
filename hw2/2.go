@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"os"
+	_ "reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +27,7 @@ type InInfoCompany struct {
 	Value     int         `json:"value"`
 	Id        interface{} `json:"id"`
 	CreatedAt time.Time   `json:"created_at"`
+	Valid     bool        `default:"true"`
 }
 
 type OutInfoCompany struct {
@@ -61,12 +63,14 @@ func UnmarshalValue(value interface{}) (int, bool) {
 	switch value.(type) {
 	case string:
 		tmp, err := strconv.Atoi(value.(string))
+		bValue = true
 		if err != nil {
-			fmt.Println("Пока так")
+			bValue = false
 		}
 		answer = tmp
 	case float64:
 		answer = int(value.(float64))
+		bValue = true
 	case float32:
 		answer = int(value.(float32))
 		bValue = true
@@ -95,12 +99,10 @@ func UnmarshalCompany(key interface{}) (string, bool) {
 func UnmarshalType(key interface{}) (string, bool) {
 	var typ string
 	var bType bool
-	switch key.(type) {
-	case string:
-		tmp := key.(string)
-		tmp = strings.ToLower(tmp)
-		if tmp == "-" || tmp == "+" || tmp == "outcome" || tmp == "income" {
-			typ = tmp
+	typ, ok := key.(string)
+	if ok {
+		typ = strings.ToLower(typ)
+		if typ == "-" || typ == "+" || typ == "outcome" || typ == "income" {
 			bType = true
 		}
 	}
@@ -111,12 +113,56 @@ func UnmarshalId(key interface{}) (interface{}, bool) {
 	var id interface{}
 	var tId bool
 	switch key.(type) {
-	case int, string:
-		id = key
+	case int:
+		id = key.(int)
+		tId = true
+	case float64:
+		id = int(key.(float64))
+		tId = true
+	case string:
+		id = key.(string)
 		tId = true
 	}
 	return id, tId
 }
+
+func UnmarshalDate(key interface{}) (time.Time, bool) {
+	var t time.Time
+	var bTime bool
+	var err error
+	tStr, ok := key.(string)
+	if ok {
+		t, err = time.Parse(time.RFC3339, tStr)
+		bTime = true
+		if err != nil {
+			bTime = false
+		}
+	}
+	return t, bTime
+}
+
+// func (i *InInfoCompany) UnmarshalOperation(objMap map[string]interface{}) error {
+// 	for key, value := range objMap {
+// 		switch key {
+// 		case "company":
+// 			i.Company, bCompany = UnmarshalCompany(value)
+// 		case "type":
+// 			i.Type, bType = UnmarshalType(value)
+// 		case "value":
+// 			i.Value, bValue = UnmarshalValue(value)
+// 		case "id":
+// 			i.Id, bId = UnmarshalId(value)
+// 			switch i.Id.(type) {
+// 			case int:
+// 				i.Id = i.Id.(int)
+// 			case string:
+// 				i.Id = i.Id.(string)
+// 			}
+// 		case "created_at":
+// 			i.CreatedAt, bTime = UnmarshalDate(value)
+// 		}
+// 	}
+// }
 
 func (i *InInfoCompany) MyUnmarshalObj(objMap map[string]interface{}) error {
 	var bType bool
@@ -135,10 +181,20 @@ func (i *InInfoCompany) MyUnmarshalObj(objMap map[string]interface{}) error {
 			i.Value, bValue = UnmarshalValue(value)
 		case "id":
 			i.Id, bId = UnmarshalId(value)
+			switch i.Id.(type) {
+			case int:
+				i.Id = i.Id.(int)
+			case string:
+				i.Id = i.Id.(string)
+			}
 		case "created_at":
+			i.CreatedAt, bTime = UnmarshalDate(value)
 		case "operation":
 
 		}
+	}
+	if bCompany && bType && bValue && bTime && bId {
+		i.Valid = true
 	}
 	return nil
 }
@@ -151,9 +207,13 @@ func (i *CompanyList) UnmarshalJSON(data []byte) error {
 		return errors.New("Can't unmarshal")
 	}
 	for _, objMap := range objMapSlice {
-
-		fmt.Println(objMap)
+		var companyInfo InInfoCompany
+		_ = companyInfo.MyUnmarshalObj(objMap)
+		i.Companies = append(i.Companies, companyInfo)
 	}
+	// for _, value := range i.Companies {
+	// 	fmt.Printf("%+v\n", value)
+	// }
 	fmt.Println("Я тут")
 
 	return nil
@@ -165,26 +225,13 @@ func main() {
 	if err != nil {
 		log.Fatal("Can't to open file:", filename, err)
 	}
-
 	defer file.Close()
 
-	// decoder := json.NewDecoder(file)
 	data, err := io.ReadAll(file)
 	if err != nil {
 		log.Fatal(err)
 	}
 	var test CompanyList
 	_ = test.UnmarshalJSON(data)
-	// var companyList []InInfoCompany
-	// for {
-	// 	var company InInfoCompany
-	// 	if err := decoder.Decode(&company); err != io.EOF {
-	// 		break
-	// 	} else if err != nil {
-	// 		log.Fatal("Can't decode.", err)
-	// 	}
-	// 	fmt.Println(company.Company)
-	// 	companyList = append(companyList, company)
-	// }
-	// fmt.Println(companyList)
+
 }
