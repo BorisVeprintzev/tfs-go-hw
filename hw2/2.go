@@ -19,12 +19,13 @@ const (
 )
 
 type CompanyListIn struct {
-	Companies []InInfoCompany
+	Companies []InInfoCompany `json:"-"`
 }
 
-type CompanyListOut struct {
-	Companies []OutInfoCompany
+type CompanyMapOut struct {
+	CompanySet map[string]*OutInfoCompany
 }
+
 type InInfoCompany struct {
 	Company   string      `json:"company"`
 	Type      string      `json:"type"`
@@ -222,6 +223,58 @@ func (i *CompanyListIn) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func (o *CompanyMapOut) AddNewCompany(info InInfoCompany) error {
+	var outInfoCompany OutInfoCompany
+
+	outInfoCompany.Company = info.Company
+	if info.Valid == true {
+		outInfoCompany.ValidCountOperation += 1
+		if info.Type == "outcome" || info.Type == "-" {
+			outInfoCompany.Balance -= info.Value
+		} else {
+			outInfoCompany.Balance += info.Value
+		}
+	} else {
+		outInfoCompany.InvalidOperation = append(outInfoCompany.InvalidOperation, info.Id)
+	}
+	o.CompanySet[info.Company] = &outInfoCompany
+	return nil
+}
+
+func NewCompanyListOut(listIn CompanyListIn) CompanyMapOut {
+	var companyMapOut CompanyMapOut
+	companyMapOut.CompanySet = make(map[string]*OutInfoCompany)
+
+	for _, value := range listIn.Companies {
+		var in bool
+
+		for name, info := range companyMapOut.CompanySet {
+			if name == value.Company {
+				in = true
+				if value.Valid == true {
+					info.ValidCountOperation += 1
+					if value.Type == "income" || value.Type == "+" {
+						info.Balance += value.Value
+					} else {
+						info.Balance -= value.Value
+					}
+				} else {
+					if value.Id != nil {
+						info.InvalidOperation = append(info.InvalidOperation, value.Id)
+					}
+				}
+				break
+			} else {
+				continue
+			}
+		}
+		if in == false {
+			companyMapOut.AddNewCompany(value)
+		}
+	}
+	return companyMapOut
+}
+
 func main() {
 	filename := readFileName()
 	fileIn, err := os.Open(filename)
@@ -237,15 +290,22 @@ func main() {
 	var companyListIn CompanyListIn
 	_ = companyListIn.UnmarshalJSON(data)
 
-	for _, value := range companyListIn.Companies {
-		fmt.Printf("%+v\n", value)
-	}
-
 	fileOut, err := os.Create("out.json")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer fileOut.Close()
-	// var companyListOut CompanyListOut
+	// var CompanyMapOut CompanyMapOut
 
+	companyMapOut := NewCompanyListOut(companyListIn)
+	// for _, value := range companyMapOut.CompanySet {
+	// 	fmt.Printf("%+v\n", value)
+	// }
+
+	dataToWrite, _ := json.Marshal(companyMapOut.CompanySet)
+	fileOut.Write(dataToWrite)
+	// for _, value := range companyMapOut.CompanySet {
+	// 	dataToWrite, _ := json.Marshal(value)
+	// 	fileOut.Write(dataToWrite)
+	// }
 }
