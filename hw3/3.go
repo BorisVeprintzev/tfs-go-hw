@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"./domain"
@@ -33,28 +35,62 @@ func NewProtectedSliceCandles() ProtectedSliceCandles {
 	return new
 }
 
-func write(candles []domain.Candle, period domain.CandlePeriod) {
+//
+//func write(candles []domain.Candle, period domain.CandlePeriod) {
+//	var file *os.File
+//	if period == domain.CandlePeriod1m {
+//		file, _ = os.OpenFile("candles_1m.csv",
+//			os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+//	} else if period == domain.CandlePeriod2m {
+//		file, _ = os.OpenFile("candles_2m.csv",
+//			os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+//	} else if period == domain.CandlePeriod10m {
+//		file, _ = os.OpenFile("candles_10m.csv",
+//			os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+//	} else {
+//		log.Fatalf("Inccorect period on write. exit.")
+//	}
+//	defer file.Close()
+//	for _, candle := range candles {
+//		str := fmt.Sprintf("%s,%s,%f,%f,%f,%f\n",
+//			candle.Ticker, candle.Period, candle.Open,
+//			candle.Close, candle.Low, candle.High)
+//		file.WriteString(str)
+//	}
+//	file.WriteString("---------------\n")
+//}
+
+func write(candlesChan <-chan []domain.Candle, period domain.CandlePeriod, wg *sync.WaitGroup, ctx context.Context) {
+	fmt.Printf("in print")
+	defer wg.Done()
 	var file *os.File
-	if period == domain.CandlePeriod1m {
-		file, _ = os.OpenFile("candles_1m.csv",
-			os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	} else if period == domain.CandlePeriod2m {
-		file, _ = os.OpenFile("candles_2m.csv",
-			os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	} else if period == domain.CandlePeriod10m {
-		file, _ = os.OpenFile("candles_10m.csv",
-			os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	} else {
-		log.Fatalf("Inccorect period on write. exit.")
+	for {
+		select {
+		case candles := <-candlesChan:
+			fmt.Printf("Get fo print: %+v", candles)
+			if period == domain.CandlePeriod1m {
+				file, _ = os.OpenFile("candles_1m.csv",
+					os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			} else if period == domain.CandlePeriod2m {
+				file, _ = os.OpenFile("candles_2m.csv",
+					os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			} else if period == domain.CandlePeriod10m {
+				file, _ = os.OpenFile("candles_10m.csv",
+					os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			} else {
+				log.Fatalf("Inccorect period on write. exit.")
+			}
+			for _, candle := range candles {
+				str := fmt.Sprintf("%s,%s,%f,%f,%f,%f\n",
+					candle.Ticker, candle.Period, candle.Open,
+					candle.Close, candle.Low, candle.High)
+				file.WriteString(str)
+			}
+			file.Close()
+		case <-ctx.Done():
+			return
+		}
 	}
-	defer file.Close()
-	for _, candle := range candles {
-		str := fmt.Sprintf("%s,%s,%f,%f,%f,%f\n",
-			candle.Ticker, candle.TS.String(), candle.Open,
-			candle.Close, candle.Low, candle.High)
-		file.WriteString(str)
-	}
-	file.WriteString("---------------\n")
 }
 
 func UpdateCandle(candles []domain.Candle, newPrice domain.Price, indexCandle int) {
@@ -74,23 +110,23 @@ func FullUpdateCandle(candles []domain.Candle, newPrice domain.Price, indexCandl
 	candles[indexCandle].TS = newPrice.TS
 }
 
-func CandleWorker(in <-chan domain.Price, ctx context.Context, period domain.CandlePeriod, wg *sync.WaitGroup) <-chan domain.Price {
+func CandleWorker(in <-chan domain.Price, ctx context.Context, period domain.CandlePeriod, wg *sync.WaitGroup) (<-chan domain.Price, <-chan []domain.Candle) {
 	out := make(chan domain.Price)
+	outPrint := make(chan []domain.Candle)
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		defer close(out)
-		fmt.Println("ya tyt")
+		defer close(outPrint)
 		candles := make([]domain.Candle, 0)
 		for {
 			select {
 			case <-ctx.Done():
-				write(candles, period)
+				outPrint <- candles
 				return
-			case <-in:
-				newPrice := <-in
-				// fmt.Printf("%+v\n, %d\n", newPrice, runtime.NumGoroutine())
+			case newPrice := <-in:
+				// fmt.Printf("Get from chan: %+v\n", newPrice)
 				indexCandle := -1
 				for i, candle := range candles {
 					if candle.Ticker == newPrice.Ticker {
@@ -107,17 +143,21 @@ func CandleWorker(in <-chan domain.Price, ctx context.Context, period domain.Can
 				prevPeriod, _ := domain.PeriodTS(period, candles[indexCandle].TS)
 				currPeriod, _ := domain.PeriodTS(period, newPrice.TS)
 				if prevPeriod != currPeriod {
-					write(candles, period) // need print only one candle
-					FullUpdateCandle(candles, newPrice, indexCandle)
-					out <- newPrice
-					break
+					//write(candles, period)
+					outPrint <- candles
+					candles = nil
+					candles = make([]domain.Candle, 0)
+					candles = append(candles, domain.NewCandle(newPrice.Ticker, period, newPrice.TS, newPrice.Value))
+					indexCandle = len(candles) - 1
+					//FullUpdateCandle(candles, newPrice, indexCandle)
+				} else {
+					UpdateCandle(candles, newPrice, indexCandle)
 				}
-				UpdateCandle(candles, newPrice, indexCandle)
 				out <- newPrice
 			}
 		}
 	}()
-	return out
+	return out, outPrint
 }
 
 var tickers = []string{"AAPL", "SBER", "NVDA", "TSLA"}
@@ -125,6 +165,8 @@ var tickers = []string{"AAPL", "SBER", "NVDA", "TSLA"}
 func main() {
 	//logger := log.New()
 	fmt.Println("Begin work")
+	sign := make(chan os.Signal, 1)
+	signal.Notify(sign, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	pg := generator.NewPricesGenerator(generator.Config{
@@ -138,15 +180,21 @@ func main() {
 	prices := pg.Prices(ctx)
 	wg := sync.WaitGroup{}
 
-	oneMinPrice := CandleWorker(prices, ctx, domain.CandlePeriod1m, &wg)
-	twoMinPrice := CandleWorker(oneMinPrice, ctx, domain.CandlePeriod2m, &wg)
-	final := CandleWorker(twoMinPrice, ctx, domain.CandlePeriod10m, &wg)
+	wg.Add(3)
+	oneMinPrice, oneMinCandle := CandleWorker(prices, ctx, domain.CandlePeriod1m, &wg)
+	go write(oneMinCandle, domain.CandlePeriod1m, &wg, ctx)
+	twoMinPrice, twoMinCandle := CandleWorker(oneMinPrice, ctx, domain.CandlePeriod2m, &wg)
+	go write(twoMinCandle, domain.CandlePeriod2m, &wg, ctx)
+	tenMinPrice, tenMinCandle := CandleWorker(twoMinPrice, ctx, domain.CandlePeriod10m, &wg)
+	go write(tenMinCandle, domain.CandlePeriod10m, &wg, ctx)
 
-	wg.Wait()
-	for price := range final {
+	//<-tenMinPrice
+	for price := range tenMinPrice {
 		//logger.Infof("prices %d: %+v", i, <-prices)
 		fmt.Printf("prices: %+v\n", price)
 	}
-	time.Sleep(2)
+	<-sign
+	fmt.Printf("Out\n")
+	wg.Wait()
 	cancel()
 }
