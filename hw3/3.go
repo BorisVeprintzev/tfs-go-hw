@@ -11,31 +11,9 @@ import (
 	"time"
 
 	"./domain"
-	"./generator"
+	"./generator" //nolint:typecheck
 )
 
-type ProtectedSliceCandles struct {
-	mx      sync.Mutex
-	Candles []domain.Candle
-}
-
-func (s *ProtectedSliceCandles) Lock() {
-	s.mx.Lock()
-}
-
-func (s *ProtectedSliceCandles) Unlock() {
-	s.mx.Unlock()
-}
-
-func NewProtectedSliceCandles() ProtectedSliceCandles {
-	new := ProtectedSliceCandles{
-		Candles: make([]domain.Candle, 4),
-	}
-	new.Unlock()
-	return new
-}
-
-//
 //func write(candles []domain.Candle, period domain.CandlePeriod) {
 //	var file *os.File
 //	if period == domain.CandlePeriod1m {
