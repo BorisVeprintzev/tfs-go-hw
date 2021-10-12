@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"time"
 
-	"../domain"
+	"tinnkoff_hw/hw3/domain"
 )
 
 type Config struct {
