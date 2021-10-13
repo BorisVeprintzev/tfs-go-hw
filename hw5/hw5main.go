@@ -14,6 +14,8 @@ type User struct {
 	Username string `json:"username"`
 }
 
+type Token string
+
 //func CreateToken(userId uint64) {
 //	atClaims := jwt.MapClaims{
 //		"authorized": true,
@@ -47,9 +49,33 @@ func Auth(handler http.Handler) http.Handler {
 	return http.HandlerFunc(fn)
 }
 
+func PostPersonalChatHandler(w http.ResponseWriter, r *http.Request) {
+
+}
+
+func GetPersonalChatHandler(w http.ResponseWriter, r *http.Request) {
+
+}
+
+func PostGroupChatHandler(w http.ResponseWriter, r *http.Request) {
+
+}
+
+func GetGroupChatHandler(w http.ResponseWriter, r *http.Request) {
+
+}
+
 func SendTokenToUser(w http.ResponseWriter, r *http.Request) {
 
 }
+
+type IdMessageType map[int]string
+type LoginTokenType map[string]Token
+type IdPersonalMessageType map[int]map[int]string
+
+var IdMessage = make(IdMessageType)
+var LoginToken = make(LoginTokenType)
+var IdPersonalMessage = make(IdPersonalMessageType)
 
 func main() {
 	server := http.Server{
@@ -57,7 +83,9 @@ func main() {
 		Handler:     nil,
 		ReadTimeout: time.Second,
 	}
+
 	// logger := log.New()
+
 	authRoute := chi.NewRouter()
 	authRoute.Use(middleware.RequestID)
 	authRoute.Use(middleware.Logger)
@@ -67,6 +95,11 @@ func main() {
 	mainRoute := chi.NewRouter()
 	mainRoute.Use(middleware.RequestID)
 	mainRoute.Use(middleware.Logger)
+	mainRoute.Use(Auth)
+	mainRoute.Get("/messages", GetGroupChatHandler)
+	mainRoute.Post("/messages", PostGroupChatHandler)
+	mainRoute.Get("/messages/me", GetPersonalChatHandler)
+	mainRoute.Post("messages/{userName}", PostPersonalChatHandler)
 
 	log.Fatal(server.ListenAndServe())
 }
