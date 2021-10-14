@@ -16,13 +16,16 @@ import (
 
 func write(candles []domain.Candle, file *os.File) {
 	fmt.Printf("in print")
-	fmt.Printf("Get fo print: %+v", candles)
+	fmt.Printf("Get fo print: %+v\n", candles)
 
 	for _, candle := range candles {
 		str := fmt.Sprintf("%s,%s,%f,%f,%f,%f\n",
 			candle.Ticker, candle.Period, candle.Open,
 			candle.Close, candle.Low, candle.High)
-		file.WriteString(str)
+		_, err := file.WriteString(str)
+		if err != nil {
+			log.Fatalf("Error writting to file.\n")
+		}
 	}
 }
 
@@ -50,13 +53,14 @@ func CandleWorker(ctx context.Context, in <-chan domain.Price, period domain.Can
 	out := make(chan domain.Price)
 	var file *os.File
 
-	if period == domain.CandlePeriod1m {
+	switch period {
+	case domain.CandlePeriod1m:
 		file, _ = os.Create("candles_1m.csv")
-	} else if period == domain.CandlePeriod2m {
+	case domain.CandlePeriod2m:
 		file, _ = os.Create("candles_2m.csv")
-	} else if period == domain.CandlePeriod10m {
+	case domain.CandlePeriod10m:
 		file, _ = os.Create("candles_10m.csv")
-	} else {
+	default:
 		log.Fatalf("Inccorect period on write. exit.")
 	}
 	wg.Add(1)
