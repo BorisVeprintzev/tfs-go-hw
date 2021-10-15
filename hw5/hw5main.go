@@ -29,9 +29,16 @@ type NewMessage struct {
 	Message string `json:"message"`
 }
 
+type MessageToPerson struct {
+	Recipient string `json:"recipient"`
+	Message   string `json:"message"`
+}
+
 var UserSlice = make([]User, 0)
 var GlobalChat = make([]Message, 0)
-var PersonalChats = make(map[])
+
+// PersonalChats храню отправленные юзеру сообщения
+var PersonalChats = make(map[string][]Message)
 
 func Hello(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
@@ -50,11 +57,58 @@ func Hello2(w http.ResponseWriter, r *http.Request) {
 }
 
 func PostPersonalChatHandler(w http.ResponseWriter, r *http.Request) {
+	name, ok := r.Context().Value(userID).(string)
+	if !ok {
+		log.Error("Error read context, PostPersonalChatHandler")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	log.Info(fmt.Sprintf("User %s, want to send message", name))
+	text, err := io.ReadAll(r.Body)
+	defer r.Body.Close()
+	var message Message
+	var messageToPerson MessageToPerson
+	if err != nil {
+		log.Error("Can't read body request. PostPersonalChatHandler.")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	err = json.Unmarshal(text, &messageToPerson)
+	if err != nil {
+		log.Error("Unmarshall error PostPersonalChatHandle")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	message.Author = name
+	message.Message = messageToPerson.Message
+	log.Info(fmt.Sprintf("New message was unmarshaled %s, %s", message.Author, message.Message))
+	if PersonalChats[messageToPerson.Recipient] != nil {
+		_ = append(PersonalChats[messageToPerson.Recipient], message)
+		log.Info(fmt.Sprintf("New message was delivered to %s", messageToPerson.Recipient))
+	} else {
+		PersonalChats[messageToPerson.Recipient] = []Message{message}
+		log.Info(fmt.Sprintf("Create new history of messaging. New message was delivered to %s", messageToPerson.Recipient))
+	}
 
 }
 
 func GetPersonalChatHandler(w http.ResponseWriter, r *http.Request) {
-
+	name, ok := r.Context().Value(userID).(string)
+	if !ok {
+		log.Error("Error read context, GetPersonalChatHandler")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	log.Info(fmt.Sprintf("User %s, ask about personal messages", name))
+	if len(PersonalChats[name]) == 0 {
+		_, _ = w.Write([]byte("You haven't messages"))
+		log.Info("End GetPersonalChatHandler. No message")
+		return
+	}
+	for _, message := range PersonalChats[name] {
+		_, _ = w.Write([]byte(fmt.Sprintf("from: %s, message: %s\n", message.Author, message.Message)))
+	}
+	log.Info("End GetPersonalChatHandler. have message")
 }
 
 func PostGroupChatHandler(w http.ResponseWriter, r *http.Request) {
@@ -212,7 +266,7 @@ func main() {
 	mainRoute.Get("/messages", GetGroupChatHandler)
 	mainRoute.Post("/messages", PostGroupChatHandler)
 	mainRoute.Get("/messages/me", GetPersonalChatHandler)
-	mainRoute.Post("/messages/{userName}", PostPersonalChatHandler)
+	mainRoute.Post("/messages/newMessage", PostPersonalChatHandler)
 	mainRoute.Get("/hello", Hello2)
 
 	authRoute.Mount("/auth", mainRoute)
