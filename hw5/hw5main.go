@@ -242,6 +242,7 @@ type User struct {
 }
 
 func main() {
+	_, cancel := context.WithCancel(context.Background())
 	authRoute := chi.NewRouter()
 	server := http.Server{
 		Addr:        ":4999",
@@ -249,8 +250,6 @@ func main() {
 		ReadTimeout: time.Second,
 	}
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 	logger := log.New()
 
 	authRoute.Use(middleware.RequestID)
@@ -270,8 +269,22 @@ func main() {
 	mainRoute.Get("/hello", Hello2)
 
 	authRoute.Mount("/auth", mainRoute)
+
+	c := make(chan os.Signal, 1)
+	signal.Ignore(syscall.SIGHUP, syscall.SIGPIPE)
+	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+	stopAppCh := make(chan struct{})
+	go func() {
+		log.Info("Get captured signal: ", <-c)
+		cancel()
+
+		if err := server.Shutdown(context.Background()); err != nil {
+			log.Error("Can't shutdown server")
+		}
+		stopAppCh <- struct{}{}
+	}()
+
 	log.Info("Wait requests")
 	log.Fatal(server.ListenAndServe())
-	<-c
-	time.Sleep(3 * time.Second)
+	<-stopAppCh
 }
