@@ -38,14 +38,9 @@ func UpdateCandle(candles []domain.Candle, newPrice domain.Price, indexCandle in
 	candles[indexCandle].Close = newPrice.Value
 }
 
-func emptyFunc(ctx context.Context, in <-chan domain.Price) {
+func emptyFunc(in <-chan domain.Price) {
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-in:
-			continue
-		}
+		<-in
 	}
 }
 
@@ -128,7 +123,7 @@ func main() {
 	twoMinPrice := CandleWorker(ctx, oneMinPrice, domain.CandlePeriod2m, &wg)
 	tenMinPrice := CandleWorker(ctx, twoMinPrice, domain.CandlePeriod10m, &wg)
 
-	go emptyFunc(ctx, tenMinPrice)
+	go emptyFunc(tenMinPrice)
 	<-sign
 	fmt.Printf("Out\n")
 	cancel()
