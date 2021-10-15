@@ -31,29 +31,7 @@ type NewMessage struct {
 
 var UserSlice = make([]User, 0)
 var GlobalChat = make([]Message, 0)
-
-//func Auth(handler http.Handler) http.Handler {
-//	fn := func(w http.ResponseWriter, r *http.Request) {
-//		c, err := r.Cookie(cookieAuth)
-//		switch err {
-//		case nil:
-//		case http.ErrNoCookie:
-//			w.WriteHeader(http.StatusUnauthorized)
-//			return
-//		default:
-//			w.WriteHeader(http.StatusInternalServerError)
-//			return
-//		}
-//		if c.Value == "" {
-//			w.WriteHeader(http.StatusUnauthorized)
-//			return
-//		}
-//		idCtx := context.WithValue(r.Context(), userID, cookieVal(c.Value))
-//
-//		handler.ServeHTTP(w, r.WithContext(idCtx))
-//	}
-//	return http.HandlerFunc(fn)
-//}
+var PersonalChats = make(map[])
 
 func Hello(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
@@ -98,6 +76,11 @@ func PostGroupChatHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err = json.Unmarshal(text, &nMessage)
+	if err != nil {
+		log.Error("Unmarshall error PostGroupChatHandle")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	log.Info(fmt.Sprintf("Read new Message %s", nMessage.Message))
 	message.Author = name
 	message.Message = nMessage.Message
