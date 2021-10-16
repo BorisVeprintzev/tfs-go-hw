@@ -16,7 +16,7 @@ import (
 )
 
 const cookieAuth = "auth"
-const userID = "ID"
+const userID cookieValue = "ID"
 
 var CountUser uint64 = 0
 
@@ -34,6 +34,8 @@ type MessageToPerson struct {
 	Message   string `json:"message"`
 }
 
+type cookieValue string
+
 var UserSlice = make([]User, 0)
 var GlobalChat = make([]Message, 0)
 
@@ -46,7 +48,7 @@ func Hello(w http.ResponseWriter, r *http.Request) {
 }
 
 func Hello2(w http.ResponseWriter, r *http.Request) {
-	id, ok := r.Context().Value(userID).(string)
+	id, ok := r.Context().Value(userID).(cookieValue)
 	if !ok {
 		log.Error("Error read context")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -57,7 +59,7 @@ func Hello2(w http.ResponseWriter, r *http.Request) {
 }
 
 func PostPersonalChatHandler(w http.ResponseWriter, r *http.Request) {
-	name, ok := r.Context().Value(userID).(string)
+	name, ok := r.Context().Value(userID).(cookieValue)
 	if !ok {
 		log.Error("Error read context, PostPersonalChatHandler")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -79,7 +81,7 @@ func PostPersonalChatHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	message.Author = name
+	message.Author = string(name)
 	message.Message = messageToPerson.Message
 	log.Info(fmt.Sprintf("New message was unmarshaled %s, %s", message.Author, message.Message))
 	if PersonalChats[messageToPerson.Recipient] != nil {
@@ -93,26 +95,26 @@ func PostPersonalChatHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetPersonalChatHandler(w http.ResponseWriter, r *http.Request) {
-	name, ok := r.Context().Value(userID).(string)
+	name, ok := r.Context().Value(userID).(cookieValue)
 	if !ok {
 		log.Error("Error read context, GetPersonalChatHandler")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	log.Info(fmt.Sprintf("User %s, ask about personal messages", name))
-	if len(PersonalChats[name]) == 0 {
+	if len(PersonalChats[string(name)]) == 0 {
 		_, _ = w.Write([]byte("You haven't messages"))
 		log.Info("End GetPersonalChatHandler. No message")
 		return
 	}
-	for _, message := range PersonalChats[name] {
+	for _, message := range PersonalChats[string(name)] {
 		_, _ = w.Write([]byte(fmt.Sprintf("from: %s, message: %s\n", message.Author, message.Message)))
 	}
 	log.Info("End GetPersonalChatHandler. have message")
 }
 
 func PostGroupChatHandler(w http.ResponseWriter, r *http.Request) {
-	name, ok := r.Context().Value(userID).(string)
+	name, ok := r.Context().Value(userID).(cookieValue)
 	if !ok {
 		log.Error("Error read context, PostGroupChatHandler")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -136,7 +138,7 @@ func PostGroupChatHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Info(fmt.Sprintf("Read new Message %s", nMessage.Message))
-	message.Author = name
+	message.Author = string(name)
 	message.Message = nMessage.Message
 	GlobalChat = append(GlobalChat, message)
 	log.Info(fmt.Sprintf("New Message %+v, was add to global chat.", message))
@@ -228,7 +230,7 @@ func Auth(handler http.Handler) http.Handler {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		userCtx := context.WithValue(r.Context(), userID, c.Value)
+		userCtx := context.WithValue(r.Context(), userID, cookieValue(c.Value))
 
 		handler.ServeHTTP(w, r.WithContext(userCtx))
 	}
