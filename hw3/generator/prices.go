@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"time"
 
+	log "github.com/sirupsen/logrus"
 	"tinnkoff_hw/hw3/domain"
 )
 
@@ -39,6 +40,7 @@ func (g *PricesGenerator) Prices(ctx context.Context) <-chan domain.Price {
 		for {
 			select {
 			case <-ctx.Done():
+				log.Info("Prices generate done")
 				return
 			case <-ticker.C:
 				currentTime := time.Now()

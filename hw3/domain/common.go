@@ -55,3 +55,15 @@ func NewCandle(ticker string, period CandlePeriod, beginTime time.Time, open flo
 		Low:    open,
 	}
 }
+
+func FullNewCandle(ticker string, period CandlePeriod, beginTime time.Time, open float64, close float64, high float64, low float64) Candle {
+	return Candle{
+		Ticker: ticker,
+		Period: period,
+		TS:     beginTime,
+		Open:   open,
+		Close:  close,
+		High:   high,
+		Low:    low,
+	}
+}
