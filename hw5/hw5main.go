@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -37,10 +38,13 @@ type MessageToPerson struct {
 type cookieValue string
 
 var UserSlice = make([]User, 0)
+var UserSliceMutex = sync.Mutex{}
 var GlobalChat = make([]Message, 0)
+var GlobalChatMutex = sync.Mutex{}
 
 // PersonalChats храню отправленные юзеру сообщения
 var PersonalChats = make(map[string][]Message)
+var PersonalChatsMutex = sync.Mutex{}
 
 func Hello(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
@@ -84,6 +88,7 @@ func PostPersonalChatHandler(w http.ResponseWriter, r *http.Request) {
 	message.Author = string(name)
 	message.Message = messageToPerson.Message
 	log.Info(fmt.Sprintf("New message was unmarshaled %s, %s", message.Author, message.Message))
+	PersonalChatsMutex.Lock()
 	if PersonalChats[messageToPerson.Recipient] != nil {
 		_ = append(PersonalChats[messageToPerson.Recipient], message)
 		log.Info(fmt.Sprintf("New message was delivered to %s", messageToPerson.Recipient))
@@ -91,6 +96,7 @@ func PostPersonalChatHandler(w http.ResponseWriter, r *http.Request) {
 		PersonalChats[messageToPerson.Recipient] = []Message{message}
 		log.Info(fmt.Sprintf("Create new history of messaging. New message was delivered to %s", messageToPerson.Recipient))
 	}
+	PersonalChatsMutex.Unlock()
 
 }
 
@@ -102,6 +108,7 @@ func GetPersonalChatHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Info(fmt.Sprintf("User %s, ask about personal messages", name))
+	PersonalChatsMutex.Lock()
 	if len(PersonalChats[string(name)]) == 0 {
 		_, _ = w.Write([]byte("You haven't messages"))
 		log.Info("End GetPersonalChatHandler. No message")
@@ -110,6 +117,7 @@ func GetPersonalChatHandler(w http.ResponseWriter, r *http.Request) {
 	for _, message := range PersonalChats[string(name)] {
 		_, _ = w.Write([]byte(fmt.Sprintf("from: %s, message: %s\n", message.Author, message.Message)))
 	}
+	PersonalChatsMutex.Unlock()
 	log.Info("End GetPersonalChatHandler. have message")
 }
 
@@ -140,18 +148,21 @@ func PostGroupChatHandler(w http.ResponseWriter, r *http.Request) {
 	log.Info(fmt.Sprintf("Read new Message %s", nMessage.Message))
 	message.Author = string(name)
 	message.Message = nMessage.Message
+	GlobalChatMutex.Lock()
 	GlobalChat = append(GlobalChat, message)
+	GlobalChatMutex.Unlock()
 	log.Info(fmt.Sprintf("New Message %+v, was add to global chat.", message))
 }
 
 func GetGroupChatHandler(w http.ResponseWriter, r *http.Request) {
-	_, ok := r.Context().Value(userID).(string)
+	_, ok := r.Context().Value(userID).(cookieValue)
 	if !ok {
 		log.Error("Error read context. GetGroupChatHandler")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	log.Info("Search global chat messages")
+	GlobalChatMutex.Lock()
 	for _, message := range GlobalChat {
 		_, err := w.Write([]byte(fmt.Sprintf("User: %s, Message: %s\n", message.Author, message.Message)))
 		if err != nil {
@@ -160,6 +171,7 @@ func GetGroupChatHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	GlobalChatMutex.Unlock()
 	log.Info("End send global chat messages")
 }
 
@@ -193,7 +205,9 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		Path:  "/",
 	}
 	user.CookieValue = c.Value
+	UserSliceMutex.Lock()
 	UserSlice = append(UserSlice, user)
+	UserSliceMutex.Unlock()
 	log.Info(fmt.Sprintf("Add new User: %s, summury count users: %d", user.Username, CountUser))
 	log.Info(fmt.Sprintf("Add new cookie to user %s", user.Username))
 	log.Info(fmt.Sprintf("User %s get new cookie: %s", user.Username, user.CookieValue))
@@ -217,6 +231,7 @@ func Auth(handler http.Handler) http.Handler {
 		var u User
 		u.ID = 100
 		log.Info(fmt.Sprintf("Get cookie:%s", c.Value))
+		UserSliceMutex.Lock()
 		for _, user := range UserSlice {
 			log.Info(fmt.Sprintf("Check user %s, cookie:%s", user.Username, user.CookieValue))
 			if user.CookieValue == c.Value {
@@ -225,6 +240,7 @@ func Auth(handler http.Handler) http.Handler {
 				break
 			}
 		}
+		UserSliceMutex.Unlock()
 		if u.ID == 100 {
 			log.Error("User doesn't found")
 			w.WriteHeader(http.StatusUnauthorized)
