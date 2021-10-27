@@ -71,15 +71,6 @@ func NewPersonalChatsS() PersonalChatsS {
 	}
 }
 
-// var UserSlice = make([]User, 0)
-// var UserSliceMutex = sync.Mutex{}
-// var GlobalChat = make([]Message, 0)
-// var GlobalChatMutex = sync.Mutex{}
-
-// PersonalChats храню отправленные юзеру сообщения
-// var PersonalChats = make(map[string][]Message)
-// var PersonalChatsMutex = sync.Mutex{}
-
 func Hello(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("Hello"))
@@ -122,19 +113,14 @@ func (chat *PersonalChatsS) PostPersonalChatHandler(w http.ResponseWriter, r *ht
 	message.Author = string(name)
 	message.Message = messageToPerson.Message
 	log.Info(fmt.Sprintf("New message was unmarshaled %s, %s", message.Author, message.Message))
-	// PersonalChatsMutex.Lock()
 	chat.mx.Lock()
-	//if PersonalChats[messageToPerson.Recipient] != nil {
-	//	_ = append(PersonalChats[messageToPerson.Recipient], message)
 	if chat.Map[messageToPerson.Recipient] != nil {
 		_ = append(chat.Map[messageToPerson.Recipient], message)
 		log.Info(fmt.Sprintf("New message was delivered to %s", messageToPerson.Recipient))
 	} else {
-		// PersonalChats[messageToPerson.Recipient] = []Message{message}
 		chat.Map[messageToPerson.Recipient] = []Message{message}
 		log.Info(fmt.Sprintf("Create new history of messaging. New message was delivered to %s", messageToPerson.Recipient))
 	}
-	// PersonalChatsMutex.Unlock()
 	chat.mx.Unlock()
 }
 
@@ -146,19 +132,15 @@ func (chat *PersonalChatsS) GetPersonalChatHandler(w http.ResponseWriter, r *htt
 		return
 	}
 	log.Info(fmt.Sprintf("User %s, ask about personal messages", name))
-	// PersonalChatsMutex.Lock()
-	// if len(PersonalChats[string(name)]) == 0 {
 	chat.mx.Lock()
 	if len(chat.Map[string(name)]) == 0 {
 		_, _ = w.Write([]byte("You haven't messages"))
 		log.Info("End GetPersonalChatHandler. No message")
 		return
 	}
-	// for _, message := range PersonalChats[string(name)] {
 	for _, message := range chat.Map[string(name)] {
 		_, _ = w.Write([]byte(fmt.Sprintf("from: %s, message: %s\n", message.Author, message.Message)))
 	}
-	// PersonalChatsMutex.Unlock()
 	chat.mx.Unlock()
 	log.Info("End GetPersonalChatHandler. have message")
 }
@@ -190,9 +172,6 @@ func (chat *GlobalChatS) PostGroupChatHandler(w http.ResponseWriter, r *http.Req
 	log.Info(fmt.Sprintf("Read new Message %s", nMessage.Message))
 	message.Author = string(name)
 	message.Message = nMessage.Message
-	//GlobalChatMutex.Lock()
-	//GlobalChat = append(GlobalChat, message)
-	//GlobalChatMutex.Unlock()
 	chat.mx.Lock()
 	chat.Slice = append(chat.Slice, message)
 	chat.mx.Unlock()
@@ -207,8 +186,6 @@ func (chat *GlobalChatS) GetGroupChatHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	log.Info("Search global chat messages")
-	// GlobalChatMutex.Lock()
-	// for _, message := range GlobalChat {
 	chat.mx.Lock()
 	for _, message := range chat.Slice {
 		_, err := w.Write([]byte(fmt.Sprintf("User: %s, Message: %s\n", message.Author, message.Message)))
@@ -218,7 +195,6 @@ func (chat *GlobalChatS) GetGroupChatHandler(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
-	// GlobalChatMutex.Unlock()
 	chat.mx.Unlock()
 	log.Info("End send global chat messages")
 }
@@ -253,11 +229,8 @@ func (u *Users) Login(w http.ResponseWriter, r *http.Request) {
 		Path:  "/",
 	}
 	user.CookieValue = c.Value
-	// UserSliceMutex.Lock()
-	// UserSlice = append(UserSlice, user)
 	u.mx.Lock()
 	u.Slice = append(u.Slice, user)
-	// UserSliceMutex.Unlock()
 	u.mx.Unlock()
 	log.Info(fmt.Sprintf("Add new User: %s, summury count users: %d", user.Username, CountUser))
 	log.Info(fmt.Sprintf("Add new cookie to user %s", user.Username))
@@ -281,9 +254,7 @@ func (us *Users) Auth(handler http.Handler) http.Handler {
 		}
 		flag := false
 		log.Info(fmt.Sprintf("Get cookie:%s", c.Value))
-		// UserSliceMutex.Lock()
 		us.mx.Lock()
-		// for _, user := range UserSlice {
 		for _, user := range us.Slice {
 			log.Info(fmt.Sprintf("Check user %s, cookie:%s", user.Username, user.CookieValue))
 			if user.CookieValue == c.Value {
@@ -292,7 +263,6 @@ func (us *Users) Auth(handler http.Handler) http.Handler {
 				break
 			}
 		}
-		// UserSliceMutex.Unlock()
 		us.mx.Unlock()
 		if flag == false {
 			log.Error("User doesn't found")
