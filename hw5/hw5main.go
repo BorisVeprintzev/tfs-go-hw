@@ -145,7 +145,7 @@ func PostGroupChatHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetGroupChatHandler(w http.ResponseWriter, r *http.Request) {
-	_, ok := r.Context().Value(userID).(string)
+	_, ok := r.Context().Value(userID).(cookieValue)
 	if !ok {
 		log.Error("Error read context. GetGroupChatHandler")
 		w.WriteHeader(http.StatusInternalServerError)
