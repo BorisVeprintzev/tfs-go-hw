@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -36,11 +37,48 @@ type MessageToPerson struct {
 
 type cookieValue string
 
-var UserSlice = make([]User, 0)
-var GlobalChat = make([]Message, 0)
+type Users struct {
+	Slice []User
+	mx    sync.Mutex
+}
+
+func NewUsers() Users {
+	return Users{
+		Slice: make([]User, 0),
+	}
+}
+
+type GlobalChatS struct {
+	Slice []Message
+	mx    sync.Mutex
+}
+
+func NewGlobalChatS() GlobalChatS {
+	return GlobalChatS{
+		Slice: make([]Message, 0),
+	}
+}
+
+// PersonalChatsS храню отправленные юзеру сообщения
+type PersonalChatsS struct {
+	Map map[string][]Message
+	mx  sync.Mutex
+}
+
+func NewPersonalChatsS() PersonalChatsS {
+	return PersonalChatsS{
+		Map: make(map[string][]Message),
+	}
+}
+
+// var UserSlice = make([]User, 0)
+// var UserSliceMutex = sync.Mutex{}
+// var GlobalChat = make([]Message, 0)
+// var GlobalChatMutex = sync.Mutex{}
 
 // PersonalChats храню отправленные юзеру сообщения
-var PersonalChats = make(map[string][]Message)
+// var PersonalChats = make(map[string][]Message)
+// var PersonalChatsMutex = sync.Mutex{}
 
 func Hello(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
@@ -58,7 +96,7 @@ func Hello2(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("Hello2, " + id))
 }
 
-func PostPersonalChatHandler(w http.ResponseWriter, r *http.Request) {
+func (chat *PersonalChatsS) PostPersonalChatHandler(w http.ResponseWriter, r *http.Request) {
 	name, ok := r.Context().Value(userID).(cookieValue)
 	if !ok {
 		log.Error("Error read context, PostPersonalChatHandler")
@@ -84,17 +122,23 @@ func PostPersonalChatHandler(w http.ResponseWriter, r *http.Request) {
 	message.Author = string(name)
 	message.Message = messageToPerson.Message
 	log.Info(fmt.Sprintf("New message was unmarshaled %s, %s", message.Author, message.Message))
-	if PersonalChats[messageToPerson.Recipient] != nil {
-		_ = append(PersonalChats[messageToPerson.Recipient], message)
+	// PersonalChatsMutex.Lock()
+	chat.mx.Lock()
+	//if PersonalChats[messageToPerson.Recipient] != nil {
+	//	_ = append(PersonalChats[messageToPerson.Recipient], message)
+	if chat.Map[messageToPerson.Recipient] != nil {
+		_ = append(chat.Map[messageToPerson.Recipient], message)
 		log.Info(fmt.Sprintf("New message was delivered to %s", messageToPerson.Recipient))
 	} else {
-		PersonalChats[messageToPerson.Recipient] = []Message{message}
+		// PersonalChats[messageToPerson.Recipient] = []Message{message}
+		chat.Map[messageToPerson.Recipient] = []Message{message}
 		log.Info(fmt.Sprintf("Create new history of messaging. New message was delivered to %s", messageToPerson.Recipient))
 	}
-
+	// PersonalChatsMutex.Unlock()
+	chat.mx.Unlock()
 }
 
-func GetPersonalChatHandler(w http.ResponseWriter, r *http.Request) {
+func (chat *PersonalChatsS) GetPersonalChatHandler(w http.ResponseWriter, r *http.Request) {
 	name, ok := r.Context().Value(userID).(cookieValue)
 	if !ok {
 		log.Error("Error read context, GetPersonalChatHandler")
@@ -102,18 +146,24 @@ func GetPersonalChatHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Info(fmt.Sprintf("User %s, ask about personal messages", name))
-	if len(PersonalChats[string(name)]) == 0 {
+	// PersonalChatsMutex.Lock()
+	// if len(PersonalChats[string(name)]) == 0 {
+	chat.mx.Lock()
+	if len(chat.Map[string(name)]) == 0 {
 		_, _ = w.Write([]byte("You haven't messages"))
 		log.Info("End GetPersonalChatHandler. No message")
 		return
 	}
-	for _, message := range PersonalChats[string(name)] {
+	// for _, message := range PersonalChats[string(name)] {
+	for _, message := range chat.Map[string(name)] {
 		_, _ = w.Write([]byte(fmt.Sprintf("from: %s, message: %s\n", message.Author, message.Message)))
 	}
+	// PersonalChatsMutex.Unlock()
+	chat.mx.Unlock()
 	log.Info("End GetPersonalChatHandler. have message")
 }
 
-func PostGroupChatHandler(w http.ResponseWriter, r *http.Request) {
+func (chat *GlobalChatS) PostGroupChatHandler(w http.ResponseWriter, r *http.Request) {
 	name, ok := r.Context().Value(userID).(cookieValue)
 	if !ok {
 		log.Error("Error read context, PostGroupChatHandler")
@@ -140,11 +190,16 @@ func PostGroupChatHandler(w http.ResponseWriter, r *http.Request) {
 	log.Info(fmt.Sprintf("Read new Message %s", nMessage.Message))
 	message.Author = string(name)
 	message.Message = nMessage.Message
-	GlobalChat = append(GlobalChat, message)
+	//GlobalChatMutex.Lock()
+	//GlobalChat = append(GlobalChat, message)
+	//GlobalChatMutex.Unlock()
+	chat.mx.Lock()
+	chat.Slice = append(chat.Slice, message)
+	chat.mx.Unlock()
 	log.Info(fmt.Sprintf("New Message %+v, was add to global chat.", message))
 }
 
-func GetGroupChatHandler(w http.ResponseWriter, r *http.Request) {
+func (chat *GlobalChatS) GetGroupChatHandler(w http.ResponseWriter, r *http.Request) {
 	_, ok := r.Context().Value(userID).(cookieValue)
 	if !ok {
 		log.Error("Error read context. GetGroupChatHandler")
@@ -152,7 +207,10 @@ func GetGroupChatHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Info("Search global chat messages")
-	for _, message := range GlobalChat {
+	// GlobalChatMutex.Lock()
+	// for _, message := range GlobalChat {
+	chat.mx.Lock()
+	for _, message := range chat.Slice {
 		_, err := w.Write([]byte(fmt.Sprintf("User: %s, Message: %s\n", message.Author, message.Message)))
 		if err != nil {
 			log.Error("Unexpected error, read global Message")
@@ -160,6 +218,8 @@ func GetGroupChatHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// GlobalChatMutex.Unlock()
+	chat.mx.Unlock()
 	log.Info("End send global chat messages")
 }
 
@@ -167,7 +227,7 @@ type LoginStruct struct {
 	Login string `json:"login"`
 }
 
-func Login(w http.ResponseWriter, r *http.Request) {
+func (u *Users) Login(w http.ResponseWriter, r *http.Request) {
 	text, err := io.ReadAll(r.Body)
 	defer r.Body.Close()
 	if err != nil {
@@ -193,14 +253,19 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		Path:  "/",
 	}
 	user.CookieValue = c.Value
-	UserSlice = append(UserSlice, user)
+	// UserSliceMutex.Lock()
+	// UserSlice = append(UserSlice, user)
+	u.mx.Lock()
+	u.Slice = append(u.Slice, user)
+	// UserSliceMutex.Unlock()
+	u.mx.Unlock()
 	log.Info(fmt.Sprintf("Add new User: %s, summury count users: %d", user.Username, CountUser))
 	log.Info(fmt.Sprintf("Add new cookie to user %s", user.Username))
 	log.Info(fmt.Sprintf("User %s get new cookie: %s", user.Username, user.CookieValue))
 	http.SetCookie(w, c)
 }
 
-func Auth(handler http.Handler) http.Handler {
+func (us *Users) Auth(handler http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		c, err := r.Cookie(cookieAuth)
 		switch err {
@@ -214,18 +279,22 @@ func Auth(handler http.Handler) http.Handler {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		var u User
-		u.ID = 100
+		flag := false
 		log.Info(fmt.Sprintf("Get cookie:%s", c.Value))
-		for _, user := range UserSlice {
+		// UserSliceMutex.Lock()
+		us.mx.Lock()
+		// for _, user := range UserSlice {
+		for _, user := range us.Slice {
 			log.Info(fmt.Sprintf("Check user %s, cookie:%s", user.Username, user.CookieValue))
 			if user.CookieValue == c.Value {
 				log.Info(fmt.Sprintf("User %s found", user.Username))
-				u = user
+				flag = true
 				break
 			}
 		}
-		if u.ID == 100 {
+		// UserSliceMutex.Unlock()
+		us.mx.Unlock()
+		if flag == false {
 			log.Error("User doesn't found")
 			w.WriteHeader(http.StatusUnauthorized)
 			return
@@ -254,20 +323,24 @@ func main() {
 
 	logger := log.New()
 
+	users := NewUsers()
+	globalChat := NewGlobalChatS()
+	personalChats := NewPersonalChatsS()
+
 	authRoute.Use(middleware.RequestID)
 	authRoute.Use(middleware.Logger)
-	authRoute.Post("/login", Login)
+	authRoute.Post("/login", users.Login)
 	authRoute.Get("/", Hello)
 
 	logger.Info("start authRoute")
 	mainRoute := chi.NewRouter()
 	mainRoute.Use(middleware.RequestID)
 	mainRoute.Use(middleware.Logger)
-	mainRoute.Use(Auth)
-	mainRoute.Get("/messages", GetGroupChatHandler)
-	mainRoute.Post("/messages", PostGroupChatHandler)
-	mainRoute.Get("/messages/me", GetPersonalChatHandler)
-	mainRoute.Post("/messages/newMessage", PostPersonalChatHandler)
+	mainRoute.Use(users.Auth)
+	mainRoute.Get("/messages", globalChat.GetGroupChatHandler)
+	mainRoute.Post("/messages", globalChat.PostGroupChatHandler)
+	mainRoute.Get("/messages/me", personalChats.GetPersonalChatHandler)
+	mainRoute.Post("/messages/newMessage", personalChats.PostPersonalChatHandler)
 	mainRoute.Get("/hello", Hello2)
 
 	authRoute.Mount("/auth", mainRoute)
